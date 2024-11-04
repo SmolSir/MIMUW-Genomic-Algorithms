@@ -91,8 +91,51 @@ for output_file in "$OUTPUT_DIR"/*.out; do
 done
 
 # Calculate final metrics
-mapped_percentage=$(echo "scale=2; ($correctly_mapped / $total_expected_reads) * 100" | bc)
-inaccuracy_percentage=$(echo "scale=2; ($total_inaccuracies / $total_output_reads) * 100" | bc)
+mapped_percentage=$(echo "scale=6; ($correctly_mapped / $total_expected_reads) * 100" | bc)
+inaccuracy_percentage=$(echo "scale=6; ($total_inaccuracies / $total_output_reads) * 100" | bc)
+
+# Format the calculated percentages to two decimal places for output
+mapped_percentage=$(printf "%.2f" "$mapped_percentage")
+inaccuracy_percentage=$(printf "%.2f" "$inaccuracy_percentage")
+
+# Global variables for points
+correctness_points=0
+completeness_points=0
+time_points=0
+
+# Calculate points for mapping correctness
+if (( $(echo "$inaccuracy_percentage == 0" | bc -l) )); then
+    correctness_points=3
+elif (( $(echo "$inaccuracy_percentage <= 0.2" | bc -l) )); then
+    correctness_points=2
+elif (( $(echo "$inaccuracy_percentage <= 0.5" | bc -l) )); then
+    correctness_points=1
+fi
+
+# Calculate points for mapping completeness
+if (( $(echo "$mapped_percentage >= 99" | bc -l) )); then
+    completeness_points=3
+elif (( $(echo "$mapped_percentage >= 95" | bc -l) )); then
+    completeness_points=2
+elif (( $(echo "$mapped_percentage >= 90" | bc -l) )); then
+    completeness_points=1
+fi
+
+# Simulate mapping time points calculation (assuming time and r reads are available)
+r=$total_output_reads  # Number of reads
+processing_time=2  # Placeholder for example; dynamically measure this if possible
+max_allowed_time=$(echo "2 + $r / 10" | bc)  # Calculate allowed time as 2 + r/10
+
+if (( $(echo "$processing_time <= 1" | bc -l) )); then
+    time_points=3
+elif (( $(echo "$processing_time <= 2" | bc -l) )); then
+    time_points=2
+elif (( $(echo "$processing_time <= 3" | bc -l) )); then
+    time_points=1
+fi
+
+# Add 3 additional points to the total
+total_points=$((2 + correctness_points + completeness_points + time_points + 3))
 
 # Output final metrics to both console and metrics.txt
 {
@@ -112,6 +155,20 @@ inaccuracy_percentage=$(echo "scale=2; ($total_inaccuracies / $total_output_read
     else
         echo "Inaccuracy Percentage does not meet the requirement (≤1%)"
     fi
-} | tee "$METRICS_FILE"  # Output to both console and file
+
+    if (( $(echo "$processing_time <= $max_allowed_time * 60" | bc -l) )); then
+        echo "Processing time meets the requirement ($max_allowed_time minutes)"
+    else
+        echo "Processing time exceeds max allowed time of $max_allowed_time minutes"
+    fi
+
+    echo ""
+    echo "Points Breakdown:"
+    echo "Mapping Correctness Points: $correctness_points"
+    echo "Mapping Completeness Points: $completeness_points"
+    echo "Mapping Time Points: $time_points"
+    echo "Additional Points: 2"
+    echo "Total Points: $total_points / 15 pts"
+} | tee "$METRICS_FILE"
 
 echo "Metrics written to $METRICS_FILE"
