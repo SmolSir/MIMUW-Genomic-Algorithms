@@ -21,44 +21,142 @@ import numpy
 import matplotlib.pyplot as plt
 
 # DP algorithm adapted from Langmead's notebooks
-def _trace(D, x, y):
-    print(f"trace: {len(x)}, {len(y)}")
+def _trace(DP, pattern, reference):
+    print(f"trace: {len(pattern)}, {len(reference)}")
     ''' Backtrace edit-distance matrix D for strings x and y '''
-    i, j = len(x), len(y)
-    while i > 0:
-        diag, vert, horz = sys.maxsize, sys.maxsize, sys.maxsize
-        delt = None
-        if i > 0 and j > 0:
-            delt = 0 if x[i-1] == y[j-1] else 1
-            diag = D[i-1, j-1] + delt
-        if i > 0:
-            vert = D[i-1, j] + 1
-        if j > 0:
-            horz = D[i, j-1] + 1
-        if diag <= vert and diag <= horz:
-            # diagonal was best
-            i -= 1; j -= 1
-        elif vert <= horz:
-            # vertical was best; this is an insertion in x w/r/t y
-            i -= 1
-        else:
-            # horizontal was best
-            j -= 1
-    # j = offset of the first (leftmost) character of t involved in the
-    # alignment
-    print(f"trace completed.")
-    return j
+    index_pattern, index_reference = len(pattern), len(reference)
 
-def _kEditDp(p, t):
+    while index_pattern > 0:
+        # Set initial large values for comparisons
+        diagonal = vertical = horizontal = sys.maxsize
+        if index_pattern > 0 and index_reference > 0:
+            # Diagonal movement: match or substitution
+            delta = int(pattern[index_pattern - 1] != reference[index_reference - 1])
+            diagonal = DP[index_pattern - 1, index_reference - 1] + delta
+        if index_pattern > 0:
+            # Vertical movement: insertion
+            vertical = DP[index_pattern - 1, index_reference] + 1
+        if index_reference > 0:
+            # Horizontal movement: deletion
+            horizontal = DP[index_pattern, index_reference - 1] + 1
+
+        # Determine the direction to move
+        if diagonal <= vertical and diagonal <= horizontal:
+            # Diagonal was best
+            index_pattern -= 1; index_reference -= 1
+        elif vertical <= horizontal:
+            # Vertical was best
+            index_pattern -= 1
+        else:
+            # Horizontal was best
+            index_reference -= 1
+
+    # Return the index offset for alignment start in the reference
+    print(f"trace completed.")
+    return index_reference
+
+def __kEditDp(pattern, reference, edist):
+    print(f"kEditDp - pattern: {len(pattern)} | reference: {len(reference)}")
+    DP_edist = numpy.zeros((len(pattern) + 1, len(reference) + 2), dtype=int)
+    DP_edist[1 : , 0] = range(1, len(pattern) + 1)
+    DP_edist[len(pattern), : ] = [len(pattern) + len(reference) for _ in range(0, len(reference) + 2)]
+
+    DP_start = numpy.zeros((len(pattern) + 1, len(reference) + 2), dtype=int)
+    DP_start[0, : ] = range(0, len(reference) + 2)
+
+    DP_delta = numpy.array(
+        [
+            [
+                int(pattern[row] != reference[col])
+                for col in range(len(reference))
+            ]
+            for row in range(len(pattern))
+        ],
+        dtype=int
+    )
+
+    print("kEditDp before first loops.")
+    for row in range(1, len(pattern) + 1):
+        DP_edist[row, max(0, row - edist - 1)] = row
+        DP_edist[row, min(len(reference) + 1, len(reference) + len(pattern) + edist + row)] = \
+            len(pattern) + len(reference)
+        DP_start[row, min(len(reference) + 1, len(reference) + len(pattern) + edist + row)] = \
+            min(len(reference), len(reference) + len(pattern) + edist + row - 1)
+
+        for col in range(
+            max(1, row - edist),
+            min(len(reference) + 1, len(reference) + len(pattern) + edist + row)
+        ):
+            diagonal_edist = DP_edist[row - 1, col - 1] + DP_delta[row - 1, col - 1]
+            vertical_edist = DP_edist[row - 1, col]
+            horizontal_edist = DP_edist[row, col - 1]
+
+            next_edist = min(diagonal_edist, vertical_edist, horizontal_edist)
+            DP_edist[row, col] = next_edist
+
+            if next_edist == diagonal_edist:
+                DP_start[row, col] = DP_start[row - 1, col - 1]
+            elif next_edist == vertical_edist:
+                DP_start[row, col] = DP_start[row - 1, col]
+            else: # next_edist == horizontal_edist
+                DP_start[row, col] = DP_start[row, col - 1]
+
+    print("kEditDp first loops completed.")
+    print("kEditDp before second loop.")
+    best_edist, best_start, best_end = len(pattern) + len(reference), 0, len(reference)
+    for col in range(len(reference) + 1):
+        if DP_edist[len(pattern), col] < best_edist:
+            best_edist, best_start = DP_edist[len(pattern), col], DP_start[len(pattern), col]
+
+    print("kEditDp second loop completed.")
+    return best_edist, best_start, best_end
+
+def _kEditDp(pattern, reference, edist):
+    print("Start kEditDP.")
+    len_pattern, len_reference = len(pattern), len(reference)
+
+    DP = numpy.zeros((len_pattern + 1, len_reference + 1), dtype=int)
+    DP[1:, 0] = numpy.arange(1, len_pattern + 1)
+
+    delta = (numpy.array(list(pattern), dtype='<U1')[ : , None] != numpy.array(list(reference), dtype='<U1')).astype(int)
+
+    for diag in range(2, len_pattern + len_reference + 1):
+        row_start = min(len_pattern, diag - 1)
+        row_end = max(0, diag - len_reference - 1)
+
+        col_start = max(1, diag - len_pattern)
+        col_end = min(len_reference + 1, diag)
+
+        row_indexes = numpy.arange(row_start, row_end, -1)
+        col_indexes = numpy.arange(col_start, col_end)
+
+        DP[row_indexes, col_indexes] = numpy.minimum.reduce([
+            DP[row_indexes - 1, col_indexes - 1] + delta[row_indexes - 1, col_indexes - 1],
+            DP[row_indexes - 1, col_indexes] + 1,
+            DP[row_indexes, col_indexes - 1] + 1
+        ])
+
+    best_end = numpy.argmin(DP[len_pattern, : len_reference + 1])
+    best_start = _trace(DP, pattern, reference[ : best_end])
+    best_edist = DP[len_pattern, best_end]
+
+    print("End kEditDp.")
+    return best_edist, best_start, best_end
+
+
+def __kEditDp(p, t, edist):
     ''' Find the alignment of p to a substring of t with the fewest edits.
         Return the edit distance and the coordinates of the substring. '''
     print(f"kEditDp - p: {len(p)} | t: {len(t)}")
-    D = numpy.zeros((len(p)+1, len(t)+1), dtype=int)
+    D = numpy.zeros((len(p)+1, len(t)+2), dtype=int)
     # Note: First row gets zeros.  First column initialized as usual.
     D[1:, 0] = range(1, len(p)+1)
+    D[len(p), : ] = 10**9
     print("kEditDp before first loops.")
     for i in range(1, len(p)+1):
-        for j in range(1, len(t)+1):
+        D[i, max(0, i - edist - 1)] = i
+        D[i, min(len(t) + 1, len(t) - len(p) + edist + i)]
+        for j in range(max(1, i - edist), min(len(t) + 1, len(t) - len(p) + edist + i)):
             delt = 1 if p[i-1] != t[j-1] else 0
             D[i, j] = min(D[i-1, j-1] + delt, D[i-1, j] + 1, D[i, j-1] + 1)
     print("kEditDp first loops completed.")
@@ -116,8 +214,8 @@ class Shingle:
 
 class SimpleIndex:
     def __init__(self, reference):
-        print("Initializing index...")
         self.reference = reference
+        print("Initializing index...")
         self.suffix_array = direct_kark_sort(reference)
         print("Initialization completed.")
 
@@ -209,8 +307,7 @@ class SimpleIndex:
         matching_range = range(
             self.__binarySearchSuffixArray(pattern),
             self.__binarySearchSuffixArray(__increment_last_character(pattern)))
-        # print(f"{pattern}\n{self.reference[self.suffix_array[matching_range.start] : (self.suffix_array[matching_range.start] + len(pattern))]}")
-        # print(f"{matching_range}")
+
         return [self.suffix_array[i] for i in matching_range]
 
     def query(self, pattern, edist, read_id):
@@ -227,27 +324,30 @@ class SimpleIndex:
 
         cumulative_occurence_count_list = []
         cumulative_occurence_count = 0
+        cumulative_occurence_max_count = 0
+        cumulative_occurence_max_index = None
 
         for index, count in sorted(occurence_map.items()):
             cumulative_occurence_count += count
             cumulative_occurence_count_list.append((index, cumulative_occurence_count))
 
+            if cumulative_occurence_count > cumulative_occurence_max_count:
+                cumulative_occurence_max_count = cumulative_occurence_count
+                cumulative_occurence_max_index = index
+
+        reference_substring_start = max(0, cumulative_occurence_max_index - 2 * edist)
+        reference_substring_end = min(len(self.reference), cumulative_occurence_max_index + len(pattern) + 2 * edist)
+        reference_substring = self.reference[reference_substring_start : reference_substring_end]
+
         # return occurence_map
-        self.__plot_occurence_map(cumulative_occurence_count_list, read_id)
+        # self.__plot_occurence_map(cumulative_occurence_count_list, read_id)
 
-        # count = 0
-        # total_count = 0
-
-        # for shingle in shingle_list:
-        #     if self.reference.count(shingle) > 0:
-        #         count += 1
-        #         total_count += self.reference.count(shingle)
-        #         # print(f"shingle: {shingle}\n\tcount: {self.reference.count(shingle)}\n\tquerySA: {len(self.__querySuffixArray(shingle))}")
-        #         # print()
-        #         assert self.reference.count(shingle) == len(self.__querySuffixArray(shingle))
-
-        # print(f"shingles generated: {len(shingle_list)}, total present count: {total_count}, present count: {count}")
-        return [[0, 0, 0]]
+        best_edist, occurence_start, occurence_end = _kEditDp(pattern, reference_substring, 2 * edist)
+        return [(
+            best_edist,
+            reference_substring_start + occurence_start,
+            reference_substring_start + occurence_end
+        )]
 
     def __plot_occurence_map(self, cumulative_occurence_count_list, read_id):
         index_list = [index for index, _ in cumulative_occurence_count_list]
@@ -259,32 +359,13 @@ class SimpleIndex:
         plt.ylabel("Occurrence Count")
         plt.title("Shingle Occurrence Counts by Reference Index")
 
-        output_directory = "tests/sample/output/plots"
+        output_directory = "tests/large/output/plots"
         os.makedirs(output_directory, exist_ok=True)
 
         plt.tight_layout()
         plt.savefig(f"{output_directory}/plot{read_id}.png")
         plt.close()
 
-    def queryyy(self, pattern, edist):
-        ''' Look for occurrences of p in t with up to k edits using an
-        index combined with dynamic-programming alignment. '''
-        occurrences = []
-        seen = set()     # for avoiding reporting same hit twice
-        for part, poff in partition(pattern, edist+1):
-            print(f"part: {part}, poff: {poff}")
-            for hit in self.__binarySearchSA(part): # query index w/ partition
-                print(f"hit: {hit}")
-                # left edge of T to include in DP matrix
-                lf = max(0, hit - poff - edist)
-                # right edge of T to include in DP matrix
-                rt = min(len(self.reference), hit - poff + len(pattern) + edist)
-                mn, off, xcript = _kEditDp(pattern, self.reference[lf:rt])
-                off += lf
-                if mn <= edist and (mn, off) not in seen:
-                    occurrences.append((mn, off, xcript))
-                    seen.add((mn, off))
-        return occurrences
 
 from Bio import SeqIO
 from sys import argv

@@ -9,7 +9,7 @@ fi
 # Set up paths based on the provided test directory
 TEST_DIR="$1"
 SCRIPT_DIR="$(dirname "$0")"
-SCRIPT="$SCRIPT_DIR/../src/brute.py"
+SCRIPT="$SCRIPT_DIR/../src/mapper.py"
 INPUT_DIR="${TEST_DIR%/}/input"
 OUTPUT_DIR="${TEST_DIR%/}/output"
 
