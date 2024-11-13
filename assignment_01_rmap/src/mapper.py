@@ -55,62 +55,6 @@ def _trace(DP, pattern, reference):
     print(f"trace completed.")
     return index_reference
 
-def __kEditDp(pattern, reference, edist):
-    print(f"kEditDp - pattern: {len(pattern)} | reference: {len(reference)}")
-    DP_edist = numpy.zeros((len(pattern) + 1, len(reference) + 2), dtype=int)
-    DP_edist[1 : , 0] = range(1, len(pattern) + 1)
-    DP_edist[len(pattern), : ] = [len(pattern) + len(reference) for _ in range(0, len(reference) + 2)]
-
-    DP_start = numpy.zeros((len(pattern) + 1, len(reference) + 2), dtype=int)
-    DP_start[0, : ] = range(0, len(reference) + 2)
-
-    DP_delta = numpy.array(
-        [
-            [
-                int(pattern[row] != reference[col])
-                for col in range(len(reference))
-            ]
-            for row in range(len(pattern))
-        ],
-        dtype=int
-    )
-
-    print("kEditDp before first loops.")
-    for row in range(1, len(pattern) + 1):
-        DP_edist[row, max(0, row - edist - 1)] = row
-        DP_edist[row, min(len(reference) + 1, len(reference) + len(pattern) + edist + row)] = \
-            len(pattern) + len(reference)
-        DP_start[row, min(len(reference) + 1, len(reference) + len(pattern) + edist + row)] = \
-            min(len(reference), len(reference) + len(pattern) + edist + row - 1)
-
-        for col in range(
-            max(1, row - edist),
-            min(len(reference) + 1, len(reference) + len(pattern) + edist + row)
-        ):
-            diagonal_edist = DP_edist[row - 1, col - 1] + DP_delta[row - 1, col - 1]
-            vertical_edist = DP_edist[row - 1, col]
-            horizontal_edist = DP_edist[row, col - 1]
-
-            next_edist = min(diagonal_edist, vertical_edist, horizontal_edist)
-            DP_edist[row, col] = next_edist
-
-            if next_edist == diagonal_edist:
-                DP_start[row, col] = DP_start[row - 1, col - 1]
-            elif next_edist == vertical_edist:
-                DP_start[row, col] = DP_start[row - 1, col]
-            else: # next_edist == horizontal_edist
-                DP_start[row, col] = DP_start[row, col - 1]
-
-    print("kEditDp first loops completed.")
-    print("kEditDp before second loop.")
-    best_edist, best_start, best_end = len(pattern) + len(reference), 0, len(reference)
-    for col in range(len(reference) + 1):
-        if DP_edist[len(pattern), col] < best_edist:
-            best_edist, best_start = DP_edist[len(pattern), col], DP_start[len(pattern), col]
-
-    print("kEditDp second loop completed.")
-    return best_edist, best_start, best_end
-
 def _kEditDp(pattern, reference, edist):
     print("Start kEditDP.")
     len_pattern, len_reference = len(pattern), len(reference)
@@ -143,39 +87,91 @@ def _kEditDp(pattern, reference, edist):
     print("End kEditDp.")
     return best_edist, best_start, best_end
 
-
-def __kEditDp(p, t, edist):
-    ''' Find the alignment of p to a substring of t with the fewest edits.
-        Return the edit distance and the coordinates of the substring. '''
-    print(f"kEditDp - p: {len(p)} | t: {len(t)}")
-    D = numpy.zeros((len(p)+1, len(t)+2), dtype=int)
-    # Note: First row gets zeros.  First column initialized as usual.
-    D[1:, 0] = range(1, len(p)+1)
-    D[len(p), : ] = 10**9
-    print("kEditDp before first loops.")
-    for i in range(1, len(p)+1):
-        D[i, max(0, i - edist - 1)] = i
-        D[i, min(len(t) + 1, len(t) - len(p) + edist + i)]
-        for j in range(max(1, i - edist), min(len(t) + 1, len(t) - len(p) + edist + i)):
-            delt = 1 if p[i-1] != t[j-1] else 0
-            D[i, j] = min(D[i-1, j-1] + delt, D[i-1, j] + 1, D[i, j-1] + 1)
-    print("kEditDp first loops completed.")
-    # Find minimum edit distance in last row
-    mnJ, mn = None, len(p) + len(t)
-    for j in range(len(t)+1):
-        if D[len(p), j] < mn:
-            mnJ, mn = j, D[len(p), j]
-    print("kEditDp second loop completed.")
-    # Backtrace; note: stops as soon as it gets to first row
-    off = _trace(D, p, t[:mnJ])
-    # Return edit distance and t coordinates of aligned substring
-    print("kEditDp completed.")
-    return mn, off, mnJ
-
 def partition(p, num_parts):
     ''' Divide p into num_parts non-overlapping parts, returning each part and its starting position '''
     part_size = len(p) // num_parts
     return [(p[i*part_size : (i+1)*part_size], i*part_size) for i in range(num_parts)]
+
+class KEditDP:
+    def __init__(self, pattern, reference, edist):
+        self.pattern = pattern
+        self.reference = reference
+        self.edist = edist
+        self.__initMatrix()
+
+    def __initMatrix(self):
+        len_pattern, len_reference = len(self.pattern), len(self.reference)
+
+        self.DP = numpy.zeros((len_pattern + 1, len_reference + 1), dtype=int)
+        self.DP[1:, 0] = numpy.arange(1, len_pattern + 1)
+
+        self.DP_delta = (
+            numpy.array(list(self.pattern), dtype='<U1')[ : , None] !=
+            numpy.array(list(self.reference), dtype='<U1')
+        ).astype(int)
+
+    def __trace(self, best_reference_occurence_index):
+        print(f"trace: {len(self.pattern)}, {best_reference_occurence_index}")
+        ''' Backtrace edit-distance matrix D for strings x and y '''
+
+        reference_prefix = self.reference[ : best_reference_occurence_index]
+        index_pattern, index_reference = len(self.pattern), len(reference_prefix)
+
+        while index_pattern > 0:
+            # Set initial large values for comparisons
+            diagonal = vertical = horizontal = sys.maxsize
+            if index_pattern > 0 and index_reference > 0:
+                # Diagonal movement: match or substitution
+                delta = int(self.pattern[index_pattern - 1] != reference_prefix[index_reference - 1])
+                diagonal = self.DP[index_pattern - 1, index_reference - 1] + delta
+            if index_pattern > 0:
+                # Vertical movement: insertion
+                vertical = self.DP[index_pattern - 1, index_reference] + 1
+            if index_reference > 0:
+                # Horizontal movement: deletion
+                horizontal = self.DP[index_pattern, index_reference - 1] + 1
+
+            # Determine the direction to move
+            if diagonal <= vertical and diagonal <= horizontal:
+                # Diagonal was best
+                index_pattern -= 1; index_reference -= 1
+            elif vertical <= horizontal:
+                # Vertical was best
+                index_pattern -= 1
+            else:
+                # Horizontal was best
+                index_reference -= 1
+
+        # Return the index offset for alignment start in the reference
+        print(f"trace completed.")
+        return index_reference
+
+    def compute(self):
+        print("Start kEditDP.")
+        len_pattern, len_reference = len(self.pattern), len(self.reference)
+
+        for diag in range(2, len_pattern + len_reference + 1):
+            row_start = min(len_pattern, diag - 1)
+            row_end = max(0, diag - len_reference - 1)
+
+            col_start = max(1, diag - len_pattern)
+            col_end = min(len_reference + 1, diag)
+
+            row_indexes = numpy.arange(row_start, row_end, -1)
+            col_indexes = numpy.arange(col_start, col_end)
+
+            self.DP[row_indexes, col_indexes] = numpy.minimum.reduce([
+                self.DP[row_indexes - 1, col_indexes - 1] + self.DP_delta[row_indexes - 1, col_indexes - 1],
+                self.DP[row_indexes - 1, col_indexes] + 1,
+                self.DP[row_indexes, col_indexes - 1] + 1
+            ])
+
+        best_end = numpy.argmin(self.DP[len_pattern, : len_reference + 1])
+        best_start = self.__trace(best_end)
+        best_edist = self.DP[len_pattern, best_end]
+
+        print("End kEditDp.")
+        return best_edist, best_start, best_end
 
 @dataclass(order=True)
 class Shingle:
@@ -342,7 +338,9 @@ class SimpleIndex:
         # return occurence_map
         # self.__plot_occurence_map(cumulative_occurence_count_list, read_id)
 
-        best_edist, occurence_start, occurence_end = _kEditDp(pattern, reference_substring, 2 * edist)
+        kEditDP = KEditDP(pattern, reference_substring, 2 * edist)
+        best_edist, occurence_start, occurence_end = kEditDP.compute()
+        # best_edist, occurence_start, occurence_end = _kEditDp(pattern, reference_substring, 2 * edist)
         return [(
             best_edist,
             reference_substring_start + occurence_start,
