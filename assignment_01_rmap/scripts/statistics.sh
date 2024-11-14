@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Set locale to avoid issues with comma as decimal separator
+export LC_NUMERIC="C"
+
 # Check if a directory argument is provided
 if [ -z "$1" ]; then
     echo "Usage: $0 <test_directory>"
