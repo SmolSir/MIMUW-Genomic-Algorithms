@@ -12,104 +12,14 @@
 # Tweak the parameters to achieve maximum efficiency and accuracy.
 
 from KarkSand import direct_kark_sort
+from Bio import SeqIO
+from sys import argv, maxsize
 from collections import defaultdict
-from dataclasses import dataclass
-from typing import List
-import sys
+from time import time
 import os
 import numpy
 import matplotlib.pyplot as plt
 
-# DP algorithm adapted from Langmead's notebooks
-def _trace(DP, pattern, reference):
-    ''' Backtrace edit-distance matrix DP for strings pattern and reference '''
-    index_pattern, index_reference = len(pattern), len(reference)
-
-    while index_pattern > 0:
-        # Set initial large values for comparisons
-        diagonal = vertical = horizontal = sys.maxsize
-        if index_pattern > 0 and index_reference > 0:
-            # Diagonal movement: match or substitution
-            delta = int(pattern[index_pattern - 1] != reference[index_reference - 1])
-            diagonal = DP[index_pattern - 1, index_reference - 1] + delta
-        if index_pattern > 0:
-            # Vertical movement: insertion
-            vertical = DP[index_pattern - 1, index_reference] + 1
-        if index_reference > 0:
-            # Horizontal movement: deletion
-            horizontal = DP[index_pattern, index_reference - 1] + 1
-
-        # Determine the direction to move
-        if diagonal <= vertical and diagonal <= horizontal:
-            # Diagonal was best
-            index_pattern -= 1; index_reference -= 1
-        elif vertical <= horizontal:
-            # Vertical was best
-            index_pattern -= 1
-        else:
-            # Horizontal was best
-            index_reference -= 1
-
-    # Return the index offset for alignment start in the reference
-    return index_reference
-
-# This abomination cuts two corners where values exceed edist
-def _kEditDp(pattern, reference, edist):
-    len_pattern, len_reference = len(pattern), len(reference)
-
-    DP = numpy.zeros((len_pattern + 1, len_reference + 1), dtype=int)
-    DP[1:, 0] = numpy.arange(1, len_pattern + 1)
-
-    left_boundary_row_start = edist
-    left_boundary_row_end = len_pattern + 1
-
-    left_boundary_col_start = 0
-    left_boundary_col_end = max(0, len_pattern - edist + 1)
-
-    left_boundary_row_indexes = numpy.arange(left_boundary_row_start, left_boundary_row_end)
-    left_boundary_col_indexes = numpy.arange(left_boundary_col_start, left_boundary_col_end)
-
-    DP[left_boundary_row_indexes, left_boundary_col_indexes] = len_pattern + len_reference
-
-    right_boundary_row_start = 0
-    right_boundary_row_end = max(0, len_pattern - edist + 1)
-
-    right_boundary_col_start = max(0, len_reference - len_pattern + edist)
-    right_boundary_col_end = len_reference + 1
-
-    right_boundary_row_indexes = numpy.arange(right_boundary_row_start, right_boundary_row_end)
-    right_boundary_col_indexes = numpy.arange(right_boundary_col_start, right_boundary_col_end)
-
-    DP[right_boundary_row_indexes, right_boundary_col_indexes] = len_pattern + len_reference
-
-    delta = (numpy.array(list(pattern), dtype='<U1')[ : , None] != numpy.array(list(reference), dtype='<U1')).astype(int)
-
-    for diag in range(2, len_pattern + len_reference + 1):
-        row_start = min(len_pattern, diag - 1 if diag <= edist else edist + (diag - edist - 1) // 2)
-        row_end = max(diag - len_reference - 1, 0 if diag <= len_reference - len_pattern + edist + 1 else (diag - len_reference + len_pattern - edist) // 2)
-
-        col_start = max(1, diag - len_pattern if diag > 2 * len_pattern - edist + 2 else (diag - edist) // 2 + 1)
-        col_end = min(len_reference + 1, diag if diag <= len_reference - len_pattern + edist else len_reference - len_pattern + edist + (diag - len_reference + len_pattern - edist + 1) // 2)
-
-        row_indexes = numpy.arange(row_start, row_end, -1)
-        col_indexes = numpy.arange(col_start, col_end)
-
-        DP[row_indexes, col_indexes] = numpy.minimum.reduce([
-            DP[row_indexes - 1, col_indexes - 1] + delta[row_indexes - 1, col_indexes - 1],
-            DP[row_indexes - 1, col_indexes] + 1,
-            DP[row_indexes, col_indexes - 1] + 1
-        ])
-
-    best_end = numpy.argmin(DP[len_pattern, : len_reference + 1])
-    best_start = _trace(DP, pattern, reference[ : best_end])
-    best_edist = DP[len_pattern, best_end]
-
-    return best_edist, best_start, best_end
-
-def partition(p, num_parts):
-    ''' Divide p into num_parts non-overlapping parts, returning each part and its starting position '''
-    part_size = len(p) // num_parts
-    return [(p[i*part_size : (i+1)*part_size], i*part_size) for i in range(num_parts)]
 
 class KEditDP:
     def __init__(self, pattern, reference, edist):
@@ -137,7 +47,7 @@ class KEditDP:
 
         while index_pattern > 0:
             # Set initial large values for comparisons
-            diagonal = vertical = horizontal = sys.maxsize
+            diagonal = vertical = horizontal = maxsize
             if index_pattern > 0 and index_reference > 0:
                 # Diagonal movement: match or substitution
                 delta = int(self.pattern[index_pattern - 1] != reference_prefix[index_reference - 1])
@@ -163,7 +73,6 @@ class KEditDP:
         # Return the index offset for alignment start in the reference
         return index_reference
 
-    # This is the gentle implementation, entire matrix is filled
     def compute(self):
         len_pattern, len_reference = len(self.pattern), len(self.reference)
 
@@ -189,13 +98,7 @@ class KEditDP:
 
         return best_edist, best_start, best_end
 
-@dataclass(order=True)
 class Shingle:
-    pattern_occurence_exact_list: List[int]
-    pattern_occurence_range_list: List[range]
-    pattern_offset: int
-    shingle: str
-
     def __init__(self, pattern_offset, shingle):
         self.pattern_occurence_exact_list = []
         self.pattern_occurence_range_list = []
@@ -210,17 +113,6 @@ class Shingle:
 
     def __hash__(self):
         return hash((self.pattern_offset, self.shingle))
-
-    def __numpy__updatePatternOccurenceRange(self, edist, reference_occurence_index_list, reference_length):
-        reference_exact_occurence_index_list = reference_occurence_index_list - self.pattern_offset
-        self.pattern_occurence_exact_list = reference_exact_occurence_index_list.tolist()
-
-        pattern_occurence_range_start = numpy.maximum(0, reference_exact_occurence_index_list - edist)
-        pattern_occurence_range_end = numpy.minimum(reference_length, reference_exact_occurence_index_list + edist + 1)
-
-        self.pattern_occurence_range_list = [
-            range(start, stop) for start, stop in zip(pattern_occurence_range_start, pattern_occurence_range_end)
-        ]
 
     def updatePatternOccurenceRange(self, edist, reference_occurence_index_list, reference_length):
         self.pattern_occurence_exact_list = [
@@ -237,10 +129,15 @@ class Shingle:
 
 class SimpleIndex:
     def __init__(self, reference):
-        self.reference = reference
         print("Initializing index...")
+        index_start_time = time()
+
+        self.reference = reference
         self.suffix_array = direct_kark_sort(reference)
-        print("Initialization completed.")
+
+        index_end_time = time()
+        index_time = index_end_time - index_start_time
+        print(f"Initialization completed in {int(index_time // 60)}m{(index_time % 60):.3f}s")
 
     def __binarySearchSuffixArray(self, pattern):
         assert self.reference[-1] == '$'  # t already has terminator
@@ -325,13 +222,6 @@ class SimpleIndex:
 
 
     # Returns a list of positions at which the pattern occurs in reference
-    def __numpy__querySuffixArray(self, pattern):
-        increment_pattern = pattern[ : -1] + chr(ord(pattern[-1]) + 1)
-        start_index = self.__binarySearchSuffixArray(pattern)
-        end_index = self.__binarySearchSuffixArray(increment_pattern)
-
-        return numpy.array(self.suffix_array[start_index : end_index], dtype=int)
-
     def __querySuffixArray(self, pattern):
         increment_pattern = pattern[ : -1] + chr(ord(pattern[-1]) + 1)
         matching_range = range(
@@ -339,41 +229,6 @@ class SimpleIndex:
             self.__binarySearchSuffixArray(increment_pattern))
 
         return [self.suffix_array[i] for i in matching_range]
-
-    def __numpy__query(self, pattern, edist, read_id):
-        shingle_list = self.__shingles(pattern, edist)
-
-        occurence_map = numpy.zeros(len(self.reference) + 1, dtype=int)
-
-        occurence_start_indexes = []
-        occurence_end_indexes = []
-
-        for shingle in shingle_list:
-            occurence_list = self.__querySuffixArray(shingle.shingle)
-            shingle.updatePatternOccurenceRange(edist, occurence_list, len(self.reference))
-            for occurence_range in shingle.pattern_occurence_range_list:
-                occurence_start_indexes.append(occurence_range.start)
-                occurence_end_indexes.append(occurence_range.stop)
-
-        numpy.add.at(occurence_map, occurence_start_indexes, 1)
-        numpy.add.at(occurence_map, occurence_end_indexes, -1)
-
-        cumulative_occurence_count_list = numpy.cumsum(occurence_map)
-        cumulative_occurence_max_index = numpy.argmax(cumulative_occurence_count_list)
-
-        reference_substring_start = max(0, cumulative_occurence_max_index - 2 * edist)
-        reference_substring_end = min(len(self.reference), cumulative_occurence_max_index + len(pattern) + 2 * edist)
-        reference_substring = self.reference[reference_substring_start : reference_substring_end]
-
-        kEditDP = KEditDP(pattern, reference_substring, 2 * edist)
-        best_edist, occurence_start, occurence_end = kEditDP.compute()
-        # best_edist, occurence_start, occurence_end = _kEditDp(pattern, reference_substring, 2 * edist)
-        return [(
-            best_edist,
-            reference_substring_start + occurence_start,
-            reference_substring_start + occurence_end
-        )]
-
 
     def query(self, pattern, edist, read_id):
         shingle_list = self.__shingles(pattern, edist)
@@ -404,12 +259,11 @@ class SimpleIndex:
         reference_substring_end = min(len(self.reference), cumulative_occurence_max_index + len(pattern) + 2 * edist)
         reference_substring = self.reference[reference_substring_start : reference_substring_end]
 
-        # return occurence_map
         # self.__plot_occurence_map(cumulative_occurence_count_list, read_id)
 
         kEditDP = KEditDP(pattern, reference_substring, 2 * edist)
         best_edist, occurence_start, occurence_end = kEditDP.compute()
-        # best_edist, occurence_start, occurence_end = _kEditDp(pattern, reference_substring, 2 * edist)
+
         return [(
             best_edist,
             reference_substring_start + occurence_start,
@@ -433,19 +287,12 @@ class SimpleIndex:
         plt.savefig(f"{output_directory}/plot{read_id}.png")
         plt.close()
 
-
-from Bio import SeqIO
-from sys import argv
-from time import time
-
 ERROR_RATE = 0.1
 REFERENCE_SUFFIX = "$"
 
-index_start_time = time()
 seq_rec_list = [seq_record for seq_record in SeqIO.parse(argv[1], "fasta")]
 index = SimpleIndex(str(seq_rec_list[0].seq) + REFERENCE_SUFFIX)
 del seq_rec_list
-index_end_time = time()
 
 fout = open(argv[3], "w")
 reads = SeqIO.parse(argv[2], "fasta")
@@ -455,6 +302,3 @@ for read in reads:
     if hits:
         fout.write("{}\t{}\t{}\n".format(read.id, hits[0][1], hits[0][2]))
 fout.close()
-
-index_time = index_end_time - index_start_time
-print(f"\nInitialization time: {int(index_time // 60)}m{(index_time % 60):.3f}s")
