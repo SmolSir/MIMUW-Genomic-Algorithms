@@ -100,13 +100,11 @@ class KEditDP:
 
 class Shingle:
     def __init__(self, pattern_offset, shingle):
-        self.pattern_occurence_exact_list = []
         self.pattern_occurence_range_list = []
         self.pattern_offset = pattern_offset
         self.shingle = shingle
 
     def __iter__(self):
-        yield self.pattern_occurence_exact_list
         yield self.pattern_occurence_range_list
         yield self.pattern_offset
         yield self.shingle
@@ -115,10 +113,6 @@ class Shingle:
         return hash((self.pattern_offset, self.shingle))
 
     def updatePatternOccurenceRange(self, edist, reference_occurence_index_list, reference_length):
-        self.pattern_occurence_exact_list = [
-            index - self.pattern_offset
-            for index in reference_occurence_index_list
-        ]
         self.pattern_occurence_range_list = [
             range(
                 max(0, index - self.pattern_offset - edist),
@@ -197,7 +191,7 @@ class SimpleIndex:
             shingle_set.add(Shingle(len(pattern) - shingle_length, pattern[-shingle_length : ]))
 
         # Compute shingles with expected edit distance = 1
-        for _, _, offset, shingle in shingle_set:
+        for _, offset, shingle in shingle_set:
             # Compute shingles with one substitution
             for i in range(len(shingle)):
                 for nucleotide in __NUCLEOTIDES:
@@ -242,15 +236,12 @@ class SimpleIndex:
                 occurence_map[occurence_range.start] += 1
                 occurence_map[occurence_range.stop] -= 1
 
-        cumulative_occurence_count_list = []
         cumulative_occurence_count = 0
         cumulative_occurence_max_count = 0
         cumulative_occurence_max_index = None
 
         for index, count in sorted(occurence_map.items()):
             cumulative_occurence_count += count
-            cumulative_occurence_count_list.append((index, cumulative_occurence_count))
-
             if cumulative_occurence_count > cumulative_occurence_max_count:
                 cumulative_occurence_max_count = cumulative_occurence_count
                 cumulative_occurence_max_index = index
@@ -264,13 +255,20 @@ class SimpleIndex:
         kEditDP = KEditDP(pattern, reference_substring, 2 * edist)
         best_edist, occurence_start, occurence_end = kEditDP.compute()
 
-        return [(
+        return (
             best_edist,
             reference_substring_start + occurence_start,
             reference_substring_start + occurence_end
-        )]
+        )
 
-    def __plot_occurence_map(self, cumulative_occurence_count_list, read_id):
+    def __plot_occurence_map(self, occurence_map, read_id):
+        cumulative_occurence_count = 0
+        cumulative_occurence_count_list = []
+
+        for index, count in sorted(occurence_map.items()):
+            cumulative_occurence_count += count
+            cumulative_occurence_count_list.append((index, cumulative_occurence_count))
+
         index_list = [index for index, _ in cumulative_occurence_count_list]
         count_list = [count for _, count in cumulative_occurence_count_list]
 
@@ -290,15 +288,27 @@ class SimpleIndex:
 ERROR_RATE = 0.1
 REFERENCE_SUFFIX = "$"
 
+# import tracemalloc
+
+# tracemalloc.start()
+
 seq_rec_list = [seq_record for seq_record in SeqIO.parse(argv[1], "fasta")]
 index = SimpleIndex(str(seq_rec_list[0].seq) + REFERENCE_SUFFIX)
 del seq_rec_list
 
 fout = open(argv[3], "w")
 reads = SeqIO.parse(argv[2], "fasta")
+
 for read in reads:
     print(f"Processing read: {read.id}")
-    hits = index.query(str(read.seq), int(len(read.seq) * ERROR_RATE), read.id)
-    if hits:
-        fout.write("{}\t{}\t{}\n".format(read.id, hits[0][1], hits[0][2]))
+    best_edist, best_occurence_start, best_occurence_end = index.query(
+        str(read.seq),
+        int(len(read.seq) * ERROR_RATE),
+        read.id
+    )
+    fout.write("{}\t{}\t{}\n".format(read.id, best_occurence_start, best_occurence_end))
+
 fout.close()
+
+# print(tracemalloc.get_traced_memory())
+# tracemalloc.stop()
