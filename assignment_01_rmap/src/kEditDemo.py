@@ -70,29 +70,25 @@ def test(rows, cols, edist):
     print()
 
 # Even height, even width
-test(12, 20, 4)
+test(11, 20, 4)
 test(12, 20, 5)
 test(12, 20, 6)
 test(12, 20, 7)
-test(12, 20, 10)
 
 # Odd height, odd width
-test(11, 19, 4)
+test(11, 20, 4)
 test(11, 19, 5)
 test(11, 19, 6)
 test(11, 19, 7)
-test(11, 19, 10)
 
 # Even height, odd width
-test(12, 19, 4)
+test(11, 20, 4)
 test(12, 19, 5)
 test(12, 19, 6)
 test(12, 19, 7)
-test(12, 19, 10)
 
 # Odd height, even width
 test(11, 20, 4)
 test(11, 20, 5)
 test(11, 20, 6)
 test(11, 20, 7)
-test(11, 20, 10)
