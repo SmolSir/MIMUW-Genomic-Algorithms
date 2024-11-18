@@ -11,19 +11,21 @@
 
 # Tweak the parameters to achieve maximum efficiency and accuracy.
 
-from KarkSand import direct_kark_sort
+from Bio import SeqIO
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import List
+from KarkSand import direct_kark_sort
 from sys import argv, maxsize
-from Bio import SeqIO
 from time import time
-import os
+from typing import List
+
 import numpy
-import matplotlib.pyplot as plt
+import os
 
 
 class KEditDP:
+    ''' Class for finding position of the closest edit-distance-wise occurence
+    of pattern within reference '''
     def __init__(self, pattern, reference, edist):
         self.pattern = pattern
         self.reference = reference
@@ -31,6 +33,7 @@ class KEditDP:
         self.__initMatrix()
 
     def __initMatrix(self):
+        ''' Initialise the DP matrix's first row and column, as well as the delta matrix '''
         len_pattern, len_reference = len(self.pattern), len(self.reference)
 
         self.DP = numpy.zeros((len_pattern + 1, len_reference + 1), dtype=int)
@@ -39,7 +42,7 @@ class KEditDP:
         self.DP_delta = (
             numpy.array(list(self.pattern), dtype='<U1')[ : , None] !=
             numpy.array(list(self.reference), dtype='<U1')
-        ).astype(int)
+        ).astype(bool)
 
     def __trace(self, best_reference_occurence_index):
         ''' Backtrace edit-distance matrix D for strings x and y '''
@@ -75,10 +78,11 @@ class KEditDP:
         # Return the index offset for alignment start in the reference
         return index_reference
 
-    # This is the gentle implementation, entire matrix is filled
     def compute(self):
+        ''' Computes the entire DP matrix and traces down the best edit-distance-wise occurence '''
         len_pattern, len_reference = len(self.pattern), len(self.reference)
 
+        # Compute in diagonals to take advantage of numpy vectorisations
         for diag in range(2, len_pattern + len_reference + 1):
             row_start = min(len_pattern, diag - 1)
             row_end = max(0, diag - len_reference - 1)
@@ -101,8 +105,10 @@ class KEditDP:
 
         return best_edist, best_start, best_end
 
+
 @dataclass(order=True)
 class Shingle:
+    ''' Class representing substrings of pattern that is being matched against the reference '''
     pattern_occurence_range_list: List[range]
     pattern_offset: int
     shingle: str
@@ -121,6 +127,9 @@ class Shingle:
         return hash((self.pattern_offset, self.shingle))
 
     def updatePatternOccurenceRange(self, edist, reference_occurence_index_list, reference_length):
+        ''' Given a list of shingle occurence positions in reference and maximal expected
+        edit distance, for each occurence computes a range representing the possible
+        starting positions of the shingle's pattern in reference '''
         self.pattern_occurence_range_list = [
             range(
                 max(0, index - self.pattern_offset - edist),
@@ -129,9 +138,10 @@ class Shingle:
             for index in reference_occurence_index_list
         ]
 
+
 class SimpleIndex:
     def __init__(self, reference):
-        print("Initializing index...")
+        print("Initialising index...")
         index_start_time = time()
 
         self.reference = reference
@@ -139,9 +149,11 @@ class SimpleIndex:
 
         index_end_time = time()
         index_time = index_end_time - index_start_time
-        print(f"\nInitialization completed in: {int(index_time // 60)}m{(index_time % 60):.3f}s")
+        print(f"\nInitialisation completed in: {int(index_time // 60)}m{(index_time % 60):.3f}s")
 
     def __binarySearchSuffixArray(self, pattern):
+        ''' Computes the leftmost index where pattern could be inserted while keeping
+        sorted order '''
         assert self.reference[-1] == '$'  # t already has terminator
         assert len(self.reference) == len(self.suffix_array)  # sa is the suffix array for t
         if len(self.reference) == 1:
@@ -176,15 +188,14 @@ class SimpleIndex:
                 l = c
                 lcp_l = i
 
-
-    # Returns a list of shingles obtained from pattern, with edit distances of 0 and 1
     def __shingles(self, pattern, edist):
+        ''' Computes a list of shingles obtained from pattern, with edit distances of 0 and 1 '''
         __SHINGLE_STEP = 10
         __SHINGLE_LENGTH_MIN = 10
         __NUCLEOTIDES = "GACT"
 
         # Secure the shingling parameters to avoid weird behavior
-        shingle_length = max(2 * (len(pattern) // edist), __SHINGLE_LENGTH_MIN)
+        shingle_length = max((2 * (len(pattern) // edist)) - 1, __SHINGLE_LENGTH_MIN)
         shingle_step = min(__SHINGLE_STEP, shingle_length)
 
         shingle_set = set()
@@ -222,9 +233,8 @@ class SimpleIndex:
         shingle_set.update(neighbor_shingle_set)
         return list(shingle_set)
 
-
-    # Returns a list of positions at which the pattern occurs in reference
     def __querySuffixArray(self, pattern):
+        ''' Computes a list of pattern's occurence positions in reference '''
         increment_pattern = pattern[ : -1] + chr(ord(pattern[-1]) + 1)
         matching_range = range(
             self.__binarySearchSuffixArray(pattern),
@@ -233,6 +243,7 @@ class SimpleIndex:
         return [self.suffix_array[i] for i in matching_range]
 
     def query(self, pattern, edist, read_id):
+        ''' Finds the closest matching occurence edit-distance-wise of pattern in reference '''
         shingle_list = self.__shingles(pattern, edist)
 
         occurence_map = defaultdict(int)
@@ -270,6 +281,9 @@ class SimpleIndex:
         )
 
     def __plot_occurence_map(self, occurence_map, read_id):
+        ''' Plots the expected occurence start positions in reference '''
+        import matplotlib.pyplot as plt
+
         cumulative_occurence_count_list = []
         cumulative_occurence_count = 0
 
@@ -286,7 +300,7 @@ class SimpleIndex:
         plt.ylabel("Occurrence Count")
         plt.title("Shingle Occurrence Counts by Reference Index")
 
-        output_directory = "tests/sample/output/plots"
+        output_directory = "tests/plots"
         os.makedirs(output_directory, exist_ok=True)
 
         plt.tight_layout()
@@ -294,7 +308,7 @@ class SimpleIndex:
         plt.close()
 
 
-ERROR_RATE = 0.1
+ERROR_RATE = 0.12
 REFERENCE_SUFFIX = "$"
 
 seq_rec_list = [seq_record for seq_record in SeqIO.parse(argv[1], "fasta")]

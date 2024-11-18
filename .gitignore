@@ -1,5 +1,6 @@
 # Test results
 output/
+plots/
 metrics.txt
 
 # Byte-compiled / optimized / DLL files
