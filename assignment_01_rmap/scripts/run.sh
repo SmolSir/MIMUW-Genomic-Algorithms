@@ -44,10 +44,10 @@ for READS_FILE in $READS_FILES; do
     # Define output file name based on the reads file name
     OUTPUT_FILE="$OUTPUT_DIR/$(basename "${READS_FILE%.fasta}.out")"
 
-    # Run the brute.py script with specified arguments
-    echo "Running brute.py on $READS_FILE"
+    # Run the mapper.py script with specified arguments
+    echo "Running mapper.py on $READS_FILE"
     if ! python3 "$SCRIPT" "$REFERENCE_FILE" "$READS_FILE" "$OUTPUT_FILE"; then
-        echo "Error: brute.py failed on $READS_FILE"
+        echo "Error: mapper.py failed on $READS_FILE"
         exit 1
     fi
 

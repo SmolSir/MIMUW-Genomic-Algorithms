@@ -196,7 +196,7 @@ class SimpleIndex:
 
         # Secure the shingling parameters to avoid weird behavior
         shingle_length = max((2 * (len(pattern) // edist)) - 1, __SHINGLE_LENGTH_MIN)
-        shingle_step = min(__SHINGLE_STEP, shingle_length)
+        shingle_step = min(__SHINGLE_STEP, shingle_length // 2)
 
         shingle_set = set()
         neighbor_shingle_set = set()
