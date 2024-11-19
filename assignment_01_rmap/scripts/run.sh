@@ -39,6 +39,9 @@ else
     mkdir -p "$OUTPUT_DIR"
 fi
 
+# Set the memory limit (1GB)
+ulimit -v $((1024 * 1024))  # 1GB in KB
+
 # Run tests for each reads file
 for READS_FILE in $READS_FILES; do
     # Define output file name based on the reads file name

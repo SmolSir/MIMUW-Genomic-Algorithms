@@ -26,8 +26,7 @@ if [ ! -d "$EXPECTED_DIR" ]; then
     exit 1
 fi
 
-# Memory limit (1GB) and initialize counters
-ulimit -v $((1024 * 1024))  # 1GB in KB
+# Initialize counters
 total_expected_reads=0
 correctly_mapped=0
 total_inaccuracies=0

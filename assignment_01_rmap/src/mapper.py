@@ -176,16 +176,18 @@ class Index:
 
         while True:
             center = (left + right) // 2
+            i = min(lcp_left, lcp_right)
+            reference_offset = self.suffix_array[center]
+
             # Determine whether pattern < reference[suffix_array[center] : ] by doing comparisons
             # starting from left-hand sides of pattern and reference[suffix_array[center] : ]
             # Assume: pattern < reference[suffix_array[center] : ] until proven otherwise
             is_pattern_smaller_lexicographically = True
-            i = min(lcp_left, lcp_right)
 
-            while i < len(pattern) and self.suffix_array[center] + i < len(self.reference):
-                if pattern[i] < self.reference[self.suffix_array[center] + i]:
+            while i < len(pattern) and reference_offset + i < len(self.reference):
+                if pattern[i] < self.reference[reference_offset + i]:
                     break
-                elif pattern[i] > self.reference[self.suffix_array[center] + i]:
+                elif pattern[i] > self.reference[reference_offset + i]:
                     is_pattern_smaller_lexicographically = False
                     break
                 i += 1
