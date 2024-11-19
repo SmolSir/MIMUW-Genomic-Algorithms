@@ -24,6 +24,11 @@ import numpy
 import os
 
 
+ERROR_RATE = 0.1
+READ_RELIABLE_THRESHOLD = 0.99
+REFERENCE_SUFFIX = "$"
+
+
 class KEditDP:
     ''' Class for finding position of the closest edit-distance-wise occurence
     of pattern within reference '''
@@ -156,39 +161,45 @@ class Index:
     def __binarySearchSuffixArray(self, pattern):
         ''' Computes the leftmost index where pattern could be inserted while keeping
         sorted order '''
-        assert self.reference[-1] == '$'  # t already has terminator
-        assert len(self.reference) == len(self.suffix_array)  # sa is the suffix array for t
+        # Assert that unique reference suffix is present
+        assert self.reference[-1] == REFERENCE_SUFFIX
+        # Assert that suffix array and reference have equal lengths
+        assert len(self.reference) == len(self.suffix_array)
+
         if len(self.reference) == 1:
             return 1
 
-        l, r = 0, len(self.suffix_array)  # invariant: sa[l] < p < sa[r]
-        lcp_l, lcp_r = 0, 0
+        # Invariant: suffix_array[left] < pattern < suffix_array[right]
+        left, right = 0, len(self.suffix_array)
+        # Longest Common Prefix
+        lcp_left, lcp_right = 0, 0
 
         while True:
-            c = (l + r) // 2
-            # determine whether p < T[sa[c]:] by doing comparisons
-            # starting from left-hand sides of p and T[sa[c]:]
-            plt = True  # assume p < T[sa[c]:] until proven otherwise
-            i = min(lcp_l, lcp_r)
+            center = (left + right) // 2
+            # Determine whether pattern < reference[suffix_array[center] : ] by doing comparisons
+            # starting from left-hand sides of pattern and reference[suffix_array[center] : ]
+            # Assume: pattern < reference[suffix_array[center] : ] until proven otherwise
+            is_pattern_smaller_lexicographically = True
+            i = min(lcp_left, lcp_right)
 
-            while i < len(pattern) and self.suffix_array[c] + i < len(self.reference):
-                if pattern[i] < self.reference[self.suffix_array[c] + i]:
-                    break  # p < T[sa[c]:]
-                elif pattern[i] > self.reference[self.suffix_array[c] + i]:
-                    plt = False
-                    break  # p > T[sa[c]:]
-                i += 1  # tied so far
+            while i < len(pattern) and self.suffix_array[center] + i < len(self.reference):
+                if pattern[i] < self.reference[self.suffix_array[center] + i]:
+                    break
+                elif pattern[i] > self.reference[self.suffix_array[center] + i]:
+                    is_pattern_smaller_lexicographically = False
+                    break
+                i += 1
 
-            if plt:
-                if c == l + 1:
-                    return c
-                r = c
-                lcp_r = i
+            if is_pattern_smaller_lexicographically:
+                if center == left + 1:
+                    return center
+                right = center
+                lcp_right = i
             else:
-                if c == r - 1:
-                    return r
-                l = c
-                lcp_l = i
+                if center == right - 1:
+                    return right
+                left = center
+                lcp_left = i
 
     def __shingles(self, pattern, edist):
         ''' Computes a list of shingles obtained from pattern, with edit distances of 0 and 1 '''
@@ -326,10 +337,6 @@ class Result:
         yield self.best_occurence_start
         yield self.best_occurence_end
 
-
-ERROR_RATE = 0.1
-READ_RELIABLE_THRESHOLD = 0.99
-REFERENCE_SUFFIX = "$"
 
 seq_rec_list = [seq_record for seq_record in SeqIO.parse(argv[1], "fasta")]
 index = Index(str(seq_rec_list[0].seq) + REFERENCE_SUFFIX)
