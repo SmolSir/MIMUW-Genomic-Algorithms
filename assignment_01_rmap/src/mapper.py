@@ -19,6 +19,7 @@ from sys import argv, maxsize
 from time import time
 from typing import List
 
+import math
 import numpy
 import os
 
@@ -139,7 +140,8 @@ class Shingle:
         ]
 
 
-class SimpleIndex:
+class Index:
+    ''' Class responsible for computing queries '''
     def __init__(self, reference):
         print("Initialising index...")
         index_start_time = time()
@@ -149,7 +151,7 @@ class SimpleIndex:
 
         index_end_time = time()
         index_time = index_end_time - index_start_time
-        print(f"\nInitialisation completed in: {int(index_time // 60)}m{(index_time % 60):.3f}s")
+        print(f"Initialisation completed in: {int(index_time // 60)}m{(index_time % 60):.3f}s")
 
     def __binarySearchSuffixArray(self, pattern):
         ''' Computes the leftmost index where pattern could be inserted while keeping
@@ -195,7 +197,7 @@ class SimpleIndex:
         __NUCLEOTIDES = "GACT"
 
         # Secure the shingling parameters to avoid weird behavior
-        shingle_length = max((2 * (len(pattern) // edist)) - 1, __SHINGLE_LENGTH_MIN)
+        shingle_length = max(2 * (len(pattern) // (edist + 1)), __SHINGLE_LENGTH_MIN)
         shingle_step = min(__SHINGLE_STEP, shingle_length // 2)
 
         shingle_set = set()
@@ -244,8 +246,9 @@ class SimpleIndex:
 
     def query(self, pattern, edist, read_id):
         ''' Finds the closest matching occurence edit-distance-wise of pattern in reference '''
-        shingle_list = self.__shingles(pattern, edist)
+        print(f"Processing read: {read_id}")
 
+        shingle_list = self.__shingles(pattern, edist)
         occurence_map = defaultdict(int)
 
         for shingle in shingle_list:
@@ -274,7 +277,8 @@ class SimpleIndex:
         kEditDP = KEditDP(pattern, reference_substring, 2 * edist)
         best_edist, occurence_start, occurence_end = kEditDP.compute()
 
-        return (
+        return Result(
+            read_id,
             best_edist,
             reference_substring_start + occurence_start,
             reference_substring_start + occurence_end
@@ -308,23 +312,39 @@ class SimpleIndex:
         plt.close()
 
 
-ERROR_RATE = 0.12
+class Result:
+    ''' Class representing the results of a single query '''
+    def __init__(self, read_id, best_edist, best_occurence_start, best_occurence_end):
+        self.read_id = read_id
+        self.best_edist = best_edist
+        self.best_occurence_start = best_occurence_start
+        self.best_occurence_end = best_occurence_end
+
+    def __iter__(self):
+        yield self.read_id
+        yield self.best_edist
+        yield self.best_occurence_start
+        yield self.best_occurence_end
+
+
+ERROR_RATE = 0.1
+READ_RELIABLE_THRESHOLD = 0.99
 REFERENCE_SUFFIX = "$"
 
 seq_rec_list = [seq_record for seq_record in SeqIO.parse(argv[1], "fasta")]
-index = SimpleIndex(str(seq_rec_list[0].seq) + REFERENCE_SUFFIX)
+index = Index(str(seq_rec_list[0].seq) + REFERENCE_SUFFIX)
 del seq_rec_list
 
 fout = open(argv[3], "w")
 reads = SeqIO.parse(argv[2], "fasta")
 
-for read in reads:
-    print(f"Processing read: {read.id}")
-    best_edist, best_occurence_start, best_occurence_end = index.query(
-        str(read.seq),
-        int(len(read.seq) * ERROR_RATE),
-        read.id
-    )
-    fout.write("{}\t{}\t{}\n".format(read.id, best_occurence_start, best_occurence_end))
+results = [index.query(str(read.seq), int(len(read.seq) * ERROR_RATE), read.id) for read in reads]
+results.sort(key=lambda result: result.best_edist)
+
+reliable_results = results[ : math.ceil(len(results) * READ_RELIABLE_THRESHOLD)]
+reliable_results.sort(key=lambda result: result.read_id)
+
+for read_id, _, best_occurence_start, best_occurence_end in reliable_results:
+    fout.write("{}\t{}\t{}\n".format(read_id, best_occurence_start, best_occurence_end))
 
 fout.close()
