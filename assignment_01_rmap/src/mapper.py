@@ -1,16 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Compute suffix array using provided Karkkainen-Sanders implementation (src/KarkSand.py).
-
-# Implement querying (lecture 01 slide 48). For now do O(n * log m).
-# Improve to O(n + log m) if possible using https://www.mimuw.edu.pl/~szczurek/TSG2/04_suffix_arrays.pdf
-# Be aware of memory usage here!
-
-# Implement index-assisted approximate matching (lecture 03 slide 55).
-
-# Tweak the parameters to achieve maximum efficiency and accuracy.
-
 from Bio import SeqIO
 from collections import defaultdict
 from dataclasses import dataclass
