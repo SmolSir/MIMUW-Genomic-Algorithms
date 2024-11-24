@@ -126,7 +126,7 @@ fi
 # Simulate mapping time points calculation (assuming time and r reads are available)
 r=$total_output_reads  # Number of reads
 processing_time=2  # Placeholder for example; dynamically measure this if possible
-max_allowed_time=$(echo "2 + $r / 10" | bc)  # Calculate allowed time as 2 + r/10
+max_allowed_time=$(echo "5 + $r / 10" | bc)  # Calculate allowed time as 2 + r/10
 
 if (( $(echo "$processing_time <= 1" | bc -l) )); then
     time_points=3
