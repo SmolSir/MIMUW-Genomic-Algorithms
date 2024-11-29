@@ -8,11 +8,11 @@ import gzip
 
 
 class Classifier:
-    def __init__(self, training_file, testing_file, output_file, fasta_dir="tests/sample/", k=5):
+    def __init__(self, training_file, testing_file, output_file, k=5):
         self.training_file = training_file
         self.testing_file = testing_file
         self.output_file = output_file
-        self.fasta_dir = fasta_dir  # Base directory for FASTA files
+        self.fasta_dir = os.path.dirname(training_file)
         self.k = k
         self.training_data = None
         self.testing_data = None
@@ -84,7 +84,6 @@ class Classifier:
     def generate_likelihoods(self):
         """Generate likelihoods for each test sample based on k-mer similarity."""
         results = []
-        
         for fasta_file in self.testing_data['fasta_file']:
             full_path = os.path.join(self.fasta_dir, fasta_file)
             sequences = self.parse_fasta(full_path)
@@ -112,7 +111,6 @@ class Classifier:
             results.append([fasta_file] + normalized_scores)
         
         return results
-
 
     def write_output(self, results):
         """Write the classifier output to a TSV file."""
