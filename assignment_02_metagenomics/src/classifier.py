@@ -1,10 +1,11 @@
-from collections import defaultdict
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-import pandas as pd
 import os
 import sys
 import gzip
+import time
+from collections import defaultdict
+import numpy as np
+import pandas as pd
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 class Classifier:
@@ -12,12 +13,13 @@ class Classifier:
         self.training_file = training_file
         self.testing_file = testing_file
         self.output_file = output_file
-        self.fasta_dir = os.path.dirname(training_file)
+        self.fasta_dir = os.path.dirname(training_file)  # Automatically infer path
         self.k = k
         self.training_data = None
         self.testing_data = None
         self.classes = []
         self.class_kmer_profiles = {}
+        self.total_reads = 0  # Track the total number of reads processed
 
     def load_data(self):
         """Load training and testing data from TSV files."""
@@ -53,6 +55,7 @@ class Classifier:
                     sequence += line.strip()
             if sequence:
                 sequences.append(sequence)
+        self.total_reads += len(sequences)  # Update total reads count
         return sequences
 
     def generate_kmers(self, sequence, k):
@@ -120,12 +123,23 @@ class Classifier:
         print(f"Output written to {self.output_file}")
 
     def run(self):
-        """Run the classification pipeline."""
+        """Run the classification pipeline and measure performance."""
+        start_time = time.time()
+
         self.load_data()
         self.extract_classes()
         self.aggregate_class_profiles()
         results = self.generate_likelihoods()
         self.write_output(results)
+
+        end_time = time.time()
+        elapsed_time = end_time - start_time  # Total runtime in seconds
+
+        # Calculate reads per minute per 1M reads
+        runtime_per_million_reads = (elapsed_time / 60) / (self.total_reads / 1_000_000)
+        print(f"Total reads processed: {self.total_reads}")
+        print(f"Runtime: {elapsed_time:.2f} seconds")
+        print(f"Runtime per 1M reads: {runtime_per_million_reads:.2f} minutes")
 
 
 def main():
