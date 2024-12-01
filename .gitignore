@@ -1,5 +1,6 @@
 # Test results
 output/
+experiment/
 plots/
 metrics.txt
 
