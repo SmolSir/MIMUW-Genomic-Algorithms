@@ -91,28 +91,28 @@ class Classifier:
             full_path = os.path.join(self.fasta_dir, fasta_file)
             sequences = self.parse_fasta(full_path)
             test_kmer_counts = self.compute_kmer_profile(sequences)
-            
+
             # Create a universal k-mer set
             all_kmers = set(test_kmer_counts.keys())
             for class_kmers in self.class_kmer_profiles.values():
                 all_kmers.update(class_kmers.keys())
-            
+
             # Build aligned vectors
             test_vector = np.array([test_kmer_counts.get(kmer, 0) for kmer in all_kmers])
             class_scores = {}
-            
+
             for class_name, class_kmers in self.class_kmer_profiles.items():
                 class_vector = np.array([class_kmers.get(kmer, 0) for kmer in all_kmers])
-                
+
                 # Calculate similarity (cosine similarity)
                 similarity = cosine_similarity([test_vector], [class_vector])[0][0]
                 class_scores[class_name] = similarity
-            
+
             # Normalize scores
             total_score = sum(class_scores.values())
             normalized_scores = [class_scores[class_name] / total_score for class_name in self.classes]
             results.append([fasta_file] + normalized_scores)
-        
+
         return results
 
     def write_output(self, results):
@@ -135,11 +135,19 @@ class Classifier:
         end_time = time.time()
         elapsed_time = end_time - start_time  # Total runtime in seconds
 
-        # Calculate reads per minute per 1M reads
-        runtime_per_million_reads = (elapsed_time / 60) / (self.total_reads / 1_000_000)
+                # Calculate elapsed time in minutes and seconds
+        minutes, seconds = divmod(elapsed_time, 60)
+        formatted_elapsed_time = f"{int(minutes)}m {int(seconds)}s"
+
+        # Calculate runtime per 1M reads
+        runtime_per_million_reads = elapsed_time / (self.total_reads / 1_000_000)
+        minutes, seconds = divmod(runtime_per_million_reads, 60)
+        formatted_runtime_per_million_reads = f"{int(minutes)}m {int(seconds)}s"
+
+        # Print the results
         print(f"Total reads processed: {self.total_reads}")
-        print(f"Runtime: {elapsed_time:.2f} seconds")
-        print(f"Runtime per 1M reads: {runtime_per_million_reads:.2f} minutes")
+        print(f"Runtime: {formatted_elapsed_time}")
+        print(f"Runtime per 1M reads: {formatted_runtime_per_million_reads}")
 
 
 def main():
