@@ -1,6 +1,6 @@
 # Test results
 output/
-experiment/
+experiment*/
 plots/
 metrics.txt
 

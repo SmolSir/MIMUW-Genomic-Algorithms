@@ -9,12 +9,18 @@ fi
 
 # Assign parameters
 DATA_DIR="$1"
-OUTPUT_DIR="$DATA_DIR/experiment"
+OUTPUT_DIR="$DATA_DIR/experiment_filter"
 
 # Ensure the data directory exists
 if [ ! -d "$DATA_DIR" ]; then
     echo "Error: Data directory '$DATA_DIR' does not exist."
     exit 1
+fi
+
+# Clear the output directory if it already exists
+if [ -d "$OUTPUT_DIR" ]; then
+    echo "Clearing existing output directory: $OUTPUT_DIR"
+    rm -rf "$OUTPUT_DIR"
 fi
 
 # Ensure the output directory exists
@@ -33,4 +39,4 @@ if [ ! -f "$TRAINING_DATA" ] || [ ! -f "$TESTING_DATA" ] || [ ! -f "$GROUND_TRUT
 fi
 
 # Run the experiment script
-python3 src/experiment.py "$TRAINING_DATA" "$TESTING_DATA" "$GROUND_TRUTH" "$OUTPUT_DIR"
+python3 src/experiment_filter.py "$TRAINING_DATA" "$TESTING_DATA" "$GROUND_TRUTH" "$OUTPUT_DIR"

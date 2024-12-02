@@ -5,10 +5,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from classifier import Classifier
 
+
 def main():
     # Parse command-line arguments
     if len(sys.argv) != 5:
-        print("Usage: python3 experiment.py training_data.tsv testing_data.tsv ground_truth.tsv output_dir")
+        print("Usage: python3 experiment_percentile.py training_data.tsv testing_data.tsv ground_truth.tsv output_dir")
         sys.exit(1)
 
     training_file = sys.argv[1]
@@ -19,24 +20,26 @@ def main():
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
 
-    # Define range of k values to test
-    k_values = range(1, 9)  # Experiment with k values from 1 to 8
+    # Define range for percentile values
+    percentile_values = np.arange(1, 101, 1)
+
     auc_results = {}
 
-    for k in k_values:
-        print(f"Running experiment for k = {k}")
-        output_file = os.path.join(output_dir, f"output_k{k}.tsv")
+    for percentile in percentile_values:
+        print(f"Running experiment for percentile={percentile}")
+        output_file = os.path.join(output_dir, f"output_p{percentile}.tsv")
 
-        # Run classifier
-        classifier = Classifier(training_file, testing_file, output_file, k=k)
+        # Run classifier with specified percentile
+        classifier = Classifier(training_file, testing_file, output_file)
+        classifier.downsample_percentile = percentile
         classifier.run()
 
-        # Use evaluate.py to calculate AUC-ROC
+        # Evaluate AUC-ROC using evaluate.py
         auc_roc_scores = evaluate_auc(output_file, ground_truth_file)
-        auc_results[k] = auc_roc_scores
-        print(f"AUC-ROC for k={k}: {auc_roc_scores}")
+        auc_results[percentile] = auc_roc_scores
+        print(f"AUC-ROC for percentile={percentile}: {auc_roc_scores}")
 
-    # Plot the results
+    # Plot results
     plot_auc_results(auc_results, output_dir)
 
 
@@ -45,11 +48,9 @@ def evaluate_auc(output_file, ground_truth_file):
     Call evaluate.py script to calculate AUC-ROC scores.
     """
     try:
-        # Construct and execute the evaluate.py command
         command = ["python3", "src/evaluate.py", output_file, ground_truth_file]
         result = subprocess.run(command, capture_output=True, text=True, check=True)
 
-        # Parse AUC scores from the script's output
         scores = {}
         for line in result.stdout.splitlines():
             if line.startswith("AUC-ROC for class"):
@@ -69,29 +70,21 @@ def evaluate_auc(output_file, ground_truth_file):
 
 def plot_auc_results(auc_results, output_dir):
     """
-    Plot AUC-ROC results across k values.
+    Plot AUC-ROC results for different percentiles.
     """
-    classes = list(next(iter(auc_results.values())).keys())
-    classes.remove("Average")  # Exclude "Average" from individual class plots
+    percentiles = sorted(auc_results.keys())
+    average_scores = [auc_results[p]["Average"] for p in percentiles]
 
     plt.figure(figsize=(10, 6))
-
-    for cls in classes:
-        class_scores = [auc_results[k][cls] for k in auc_results]
-        plt.plot(list(auc_results.keys()), class_scores, marker='o', label=cls)
-
-    # Average AUC-ROC
-    average_scores = [auc_results[k]["Average"] for k in auc_results]
-    plt.plot(list(auc_results.keys()), average_scores, marker='x', linestyle='--', label="Average", color="black")
-
-    plt.title("AUC-ROC vs. k")
-    plt.xlabel("k")
-    plt.ylabel("AUC-ROC")
-    plt.legend()
+    plt.plot(percentiles, average_scores, marker='o', label="Average AUC-ROC")
+    plt.title("AUC-ROC vs. Percentile")
+    plt.xlabel("Percentile")
+    plt.ylabel("Average AUC-ROC")
     plt.grid()
+    plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "auc_roc_vs_k.png"))
-    print(f"Plot saved to {os.path.join(output_dir, 'auc_roc_vs_k.png')}")
+    plt.savefig(os.path.join(output_dir, "auc_roc_vs_percentile.png"))
+    print(f"Plot saved to {os.path.join(output_dir, 'auc_roc_vs_percentile.png')}")
 
 
 if __name__ == "__main__":
