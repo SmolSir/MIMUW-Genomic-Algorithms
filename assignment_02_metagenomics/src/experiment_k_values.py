@@ -20,7 +20,7 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     # Define range of k values to test
-    k_values = range(1, 9)  # Experiment with k values from 1 to 10
+    k_values = range(1, 9)  # Experiment with k values
     auc_results = {}
 
     for k in k_values:

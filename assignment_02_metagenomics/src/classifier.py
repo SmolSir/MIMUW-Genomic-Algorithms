@@ -14,17 +14,13 @@ class Classifier:
             training_file,
             testing_file,
             output_file,
-            k=6,
-            filtering_threshold=0.8,
-            filtering_proportion=0.2,
-            downsample_percentile=55):
+            k=7,
+            downsample_percentile=65):
         self.training_file = training_file
         self.testing_file = testing_file
         self.output_file = output_file
         self.fasta_dir = os.path.dirname(training_file)  # Automatically infer path
         self.k = k
-        self.filtering_threshold = filtering_threshold
-        self.filtering_proportion = filtering_proportion
         self.downsample_percentile = downsample_percentile
         self.training_data = None
         self.testing_data = None
@@ -33,12 +29,16 @@ class Classifier:
         self.total_reads = 0  # Track the total number of reads processed
 
     def load_data(self):
-        """Load training and testing data from TSV files."""
+        """Load training and testing data from TSV files, considering only the first two columns."""
         try:
-            self.training_data = pd.read_csv(self.training_file, sep="\t", on_bad_lines="skip")
+            # Parse training data with only the first two columns
+            print("Loading training data...")
+            self.training_data = pd.read_csv(self.training_file, sep="\t", usecols=[0, 1], names=["fasta_file", "geo_loc_name"], skiprows=1)
             print("Training Data Loaded Successfully!")
 
-            self.testing_data = pd.read_csv(self.testing_file, sep="\t", on_bad_lines="skip")
+            # Parse testing data with only the fasta_file column
+            print("Loading testing data...")
+            self.testing_data = pd.read_csv(self.testing_file, sep="\t", usecols=[0], names=["fasta_file"], skiprows=1)
             print("Testing Data Loaded Successfully!")
         except Exception as e:
             print(f"Error loading data: {e}")
@@ -46,11 +46,9 @@ class Classifier:
 
     def extract_classes(self):
         """Extract unique classes (geo_loc_name) from training data."""
-        if 'geo_loc_name' not in self.training_data.columns:
-            print("Error: 'geo_loc_name' column not found in training data.")
-            sys.exit(1)
-        self.classes = self.training_data['geo_loc_name'].unique()
+        self.classes = self.training_data["geo_loc_name"].unique()
         print(f"Classes Extracted: {self.classes}")
+
 
     def parse_fasta(self, fasta_file):
         """Read and extract sequences from a gzipped FASTA file."""
@@ -96,33 +94,6 @@ class Classifier:
 
         return kmer_counts
 
-    def filter_common_kmers(self, kmer_counts):
-        """
-        Filter the most common k-mers globally across all classes.
-        Uses self.filtering_threshold and self.filtering_proportion.
-        """
-        threshold = self.filtering_threshold
-        proportion = self.filtering_proportion
-
-        global_kmer_counts = defaultdict(int)
-        for _, class_kmers in kmer_counts.items():
-            for kmer in class_kmers:
-                global_kmer_counts[kmer] += 1
-
-        num_classes = len(self.classes)
-        common_kmers = {kmer for kmer, count in global_kmer_counts.items() if count / num_classes > threshold}
-
-        max_kmers_to_filter = int(len(global_kmer_counts) * proportion)
-        common_kmers = set(sorted(common_kmers, key=lambda x: global_kmer_counts[x], reverse=True)[:max_kmers_to_filter])
-
-        filtered_kmer_counts = {
-            class_name: {kmer: count for kmer, count in class_kmers.items() if kmer not in common_kmers}
-            for class_name, class_kmers in kmer_counts.items()
-        }
-
-        print(f"Filtered {len(common_kmers)} common k-mers (Threshold: {threshold}, Proportion: {proportion}).")
-        return filtered_kmer_counts
-
     def aggregate_class_profiles(self):
         """Aggregate k-mer profiles for each class."""
         for class_name in self.classes:
@@ -136,24 +107,6 @@ class Classifier:
                     aggregated_kmer_counts[kmer] += count
             self.class_kmer_profiles[class_name] = aggregated_kmer_counts
         print("Aggregated k-mer profiles for all classes.")
-
-    # def aggregate_class_profiles(self):
-    #     """Aggregate k-mer profiles for each class."""
-    #     kmer_counts = {}
-    #     for class_name in self.classes:
-    #         class_files = self.training_data[self.training_data['geo_loc_name'] == class_name]['fasta_file']
-    #         aggregated_kmer_counts = defaultdict(int)
-    #         for fasta_file in class_files:
-    #             full_path = os.path.join(self.fasta_dir, fasta_file)
-    #             sequences = self.parse_fasta(full_path)
-    #             class_kmers = self.compute_kmer_profile(sequences)
-    #             for kmer, count in class_kmers.items():
-    #                 aggregated_kmer_counts[kmer] += count
-    #         kmer_counts[class_name] = aggregated_kmer_counts
-
-    #     # Filter out globally common k-mers
-    #     self.class_kmer_profiles = self.filter_common_kmers(kmer_counts)
-    #     print("Aggregated and filtered k-mer profiles for all classes.")
 
     def generate_likelihoods(self):
         """Generate likelihoods for each test sample based on k-mer similarity."""
@@ -176,11 +129,10 @@ class Classifier:
                 class_vector = np.array([class_kmers.get(kmer, 0) for kmer in all_kmers])
 
                 # Calculate similarity (cosine similarity)
-                similarity = cosine_similarity([test_vector], [class_vector])[0][0]
-                class_scores[class_name] = max(similarity, 0)  # Avoid negative similarities
+                class_scores[class_name] = cosine_similarity([test_vector], [class_vector])[0][0]
 
             # Normalize scores
-            total_score = sum(class_scores.values()) + 1e-6  # Add epsilon to avoid division by zero
+            total_score = sum(class_scores.values())
             normalized_scores = [class_scores[class_name] / total_score for class_name in self.classes]
 
             results.append([fasta_file] + normalized_scores)
