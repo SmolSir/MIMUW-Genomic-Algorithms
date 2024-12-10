@@ -15,13 +15,17 @@ class Classifier:
             testing_file,
             output_file,
             k=7,
-            downsample_percentile=65):
+            downsample_percentile=65,
+            training_data_ratio=100,
+            testing_data_ratio=100):
         self.training_file = training_file
         self.testing_file = testing_file
         self.output_file = output_file
         self.fasta_dir = os.path.dirname(training_file)  # Automatically infer path
         self.k = k
         self.downsample_percentile = downsample_percentile
+        self.training_data_ratio = training_data_ratio
+        self.testing_data_ratio = testing_data_ratio
         self.training_data = None
         self.testing_data = None
         self.classes = []
@@ -50,7 +54,7 @@ class Classifier:
         print(f"Classes Extracted: {self.classes}")
 
 
-    def parse_fasta(self, fasta_file):
+    def parse_fasta(self, fasta_file, downsample_ratio=100):
         """Read and extract sequences from a gzipped FASTA file."""
         sequences = []
         with gzip.open(fasta_file, "rt") as f:
@@ -64,6 +68,11 @@ class Classifier:
                     sequence += line.strip()
             if sequence:
                 sequences.append(sequence)
+
+        if downsample_ratio < 100:
+            downsample_count = max(1, int(len(sequences) * downsample_ratio / 100))
+            sequences = np.random.choice(sequences, downsample_count, replace=False).tolist()
+
         self.total_reads += len(sequences)  # Update total reads count
         return sequences
 
@@ -101,7 +110,7 @@ class Classifier:
             aggregated_kmer_counts = defaultdict(int)
             for fasta_file in class_files:
                 full_path = os.path.join(self.fasta_dir, fasta_file)
-                sequences = self.parse_fasta(full_path)
+                sequences = self.parse_fasta(full_path, downsample_ratio=self.training_data_ratio)
                 class_kmers = self.compute_kmer_profile(sequences)
                 for kmer, count in class_kmers.items():
                     aggregated_kmer_counts[kmer] += count
@@ -113,7 +122,7 @@ class Classifier:
         results = []
         for fasta_file in self.testing_data['fasta_file']:
             full_path = os.path.join(self.fasta_dir, fasta_file)
-            sequences = self.parse_fasta(full_path)
+            sequences = self.parse_fasta(full_path, downsample_ratio=self.testing_data_ratio)
             test_kmer_counts = self.compute_kmer_profile(sequences)
 
             # Create a universal k-mer set
