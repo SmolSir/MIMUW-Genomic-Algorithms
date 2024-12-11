@@ -21,7 +21,7 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     # Define range for testing data ratios (in percentages)
-    testing_data_ratios = np.arange(1, 101, 1)
+    testing_data_ratios = np.arange(5, 101, 5)
 
     auc_results = {}
 
